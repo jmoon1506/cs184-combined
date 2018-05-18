@@ -1,0 +1,239 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<style>
+  body {
+    padding: 100px;
+    width: 1000px;
+    margin: auto;
+    text-align: left;
+    font-weight: 300;
+    font-family: 'Open Sans', sans-serif;
+    color: #121212;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Source Sans Pro', sans-serif;
+  }
+</style>
+<title>CS 184 Rasterizer</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+</head>
+
+
+<body>
+
+<h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2018</h1>
+<h1 align="middle">Project 1: Rasterizer</h1>
+<h2 align="middle">Joseph Moon, CS284A</h2>
+
+<br><br>
+
+<div>
+
+<h2 align="middle">Overview</h2>
+<p>In this assignment, we built an SVG rasterizer with several features of modern graphical programs. These include supersampling, mipmapping, and bilinear and trilinear filtering. We rendered using a variety of inputs, writing code to handle textures, transforms, and barycentric colors. Perhaps the most interesting part of this project was discovering the enormous thinking and effort put into basic graphical tasks.</p>
+
+<h2 align="middle">Section I: Rasterization</h2>
+
+<h3 align="middle">Part 1: Rasterizing single-color triangles</h3>
+
+
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <p>The code in "DrawRend::rasterize_triangle" first calculates constants for the three line test. It then finds the minimum and maximum x and y values to use as a bounding box. Finally, it applies the three line test to the center of each pixel and rasterizes it if within the triangle. Since this is merely an implementation of the method described in class, it obviously has the same performance.</p>
+      </td>
+      <td>
+        <img src="images/hw1/p1-1.png" align="middle" width="300px"/>
+        <figcaption align="middle">Screenshot of basic/test4.svg</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h3 align="middle">Part 2: Antialiasing triangles</h3>
+
+<p>To implement supersampling, we first wrote "SampleBuffer::get_pixel_color". This function simply returns an average of subpixel colors. Then we modified "DrawRend::rasterize_triangle" to sample the center of each subpixel using the three line test. If within the triangle, the subpixel is filled with the triangle color. Otherwise it is left as white. Each entire pixel is then filled using the average of subpixel colors.
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw1/p2-1.png" align="middle" width="300px"/>
+        <figcaption align="middle">Sample rate 1</figcaption>
+      </td>
+      <td>
+        <img src="images/hw1/p2-2.png" align="middle" width="300px"/>
+        <figcaption align="middle">Sample rate 4</figcaption>
+      </td>
+      <td>
+        <img src="images/hw1/p2-3.png" align="middle" width="300px"/>
+        <figcaption align="middle">Sample rate 16</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h3 align="middle">Part 3: Transforms</h3>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <p>This cubeman is running. That is all.</p>
+      </td>
+      <td>
+        <img src="images/hw1/p3-1.png" align="middle" width="300px"/>
+        <!-- <figcaption align="middle">Very creative</figcaption> -->
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h2 align="middle">Section II: Sampling</h2>
+
+<h3 align="middle">Part 4: Barycentric coordinates</h3>
+
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <p>Barycentric coordinates are set of three numbers corresponding to the vertices of a triangle. The sum of the coefficients remains constant (usually 1), so positive barycentric coordinates lie within the triangle and negative ones without.</p>
+        <p>We use barycentric coordinates if the parser passes a non-null "Tri" to DrawRend. "DrawRend::rasterize_triangle" then feeds its triangle vertex positions (x0,y0), (x1,y1), and (x2,y2) and pixel position (x,y) into the equation for barycentric coordinates. This results in alpha, beta, and gamma values such that alpha*(x0,y0) + beta*(x1,y1) + gamma*(x2,y2) = (x,y) and alpha+beta+gamma=1.</p>
+
+        <p>Alpha, beta, and gamma constitute the barycentric coordinates relative to the triangle. Barycentric coordinates allow us to interpolate properties between triangle vertices. For example, the "ColorTri" object returns an interpolated color when we call "ColorTri::color". The image to the right shows a triangle with red, green, and blue vertices. Observe the interior pixels interpolating between these colors in proportion to their distance from each vertex.</p>
+      </td>
+      <td>
+        <img src="images/hw1/p4-1.png" align="middle" width="300px"/>
+        <figcaption align="middle">A single ColorTri</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <p>Many ColorTris shaped into a circle</p>
+      </td>
+      <td>
+        <img src="images/hw1/p4-2.png" align="middle" width="300px"/>
+        <!-- <figcaption align="middle">Very creative</figcaption> -->
+      </td>
+    </tr>
+  </table>
+</div>
+
+
+<h3 align="middle">Part 5: "Pixel sampling" for texture mapping</h3>
+
+<p>Textures files have a fixed size and rectilinear shape. In simple cases, we can directly map texture pixels (texels) to screen pixels. But we often want to display images/hw1 with rotation, scaling, or distortion. In doing so, we must sample multiple texels to each pixel (minification) or a single texel across many pixels (magnification).</p>
+
+<p>Similar to how we sampled vertex colors, we convert from screen space to texture space using barycentric coordinates in "DrawRend::rasterize_triangle". Then in "Texture::sample", we may call "sample_nearest" to return the color of the texel nearest to the pixel. However, if the texel is much smaller or larger than the pixel, this will create jaggies and moire patterns. To correct this, we sample the 4 texels nearest the pixel and return their interpolated color. Implemented in "Texture::sample_bilinear", this process is known as bilinear filtering.
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw1/p5-1.png" align="middle" width="300px"/>
+        <figcaption align="middle">Nearest, 1 sample</figcaption>
+      </td>
+      <td>
+        <img src="images/hw1/p5-2.png" align="middle" width="300px"/>
+        <figcaption align="middle">Nearest, 16 samples</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/hw1/p5-3.png" align="middle" width="300px"/>
+        <figcaption align="middle">Bilinear, 1 sample</figcaption>
+      </td>
+      <td>
+        <img src="images/hw1/p5-4.png" align="middle" width="300px"/>
+        <figcaption align="middle">Bilinear, 16 samples</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+In the above images/hw1, we see that bilinear filtering results in far smoother lines and terrain at 1 sample per pixel. However, the difference between nearest and bilinear filtering is much smaller when the sample rate is high.
+
+<h3 align="middle">Part 6: "Level sampling" with mipmaps for texture mapping</h3>
+
+While bilinear filtering improves image fidelity by sampling 4 texels to each pixel, its effectiveness decreases as the number of texels per pixel increases past 4. To improve minification we use mipmaps, which are pre-miniaturized copies of the original image. Mipmaps are organized into levels, where level 0 is the original texture, level 1 at one-half size, level 2 at one-quarter, et cetera.</p>
+
+<p>Like before, we convert the pixel (x,y) to texture space using barycentric coordinates. However, in "DrawRend::rasterize_triangle" we also convert the two neighboring pixels (x+1,y) and (x,y+1). Then in "Texture::get_level" we calculate the maximum distance between the original pixel and its neighbors. This distance is the approximate length of the original pixel in texture space. Rounding the base-2 logarithm of this length gives us the mipmap level to use. However, the transition between mipmap levels can appear jarring in the displayed image. With trilinear filtering, we interpolate between mipmap levels based on the unrounded logarithmic distance from "Texture::get_level" to get smoother transitions.</p>
+
+<p>We already saw in Part 5 that supersampling can greatly improve image quality. However, this is very expensive since we run multiple times as many triangle tests and fill operations. When working with textures, bilinear and trilinear filtering consume a fixed additional cost per pixel for quality similar to supersampling. They also ease artifacts that may prove difficult even for moderate amounts of sampling, such as overblur on minified texels.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw1/p6-orig.png" align="middle" width="300px"/>
+      </td>
+      <td>
+        <p>Original image</p>
+      </td>
+    </tr>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw1/p6-1.png" align="middle" width="300px"/>
+        <figcaption align="middle">L_ZERO, P_NEAREST</figcaption>
+      </td>
+      <td>
+        <img src="images/hw1/p6-2.png" align="middle" width="300px"/>
+        <figcaption align="middle">L_ZERO, P_LINEAR</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/hw1/p6-3.png" align="middle" width="300px"/>
+        <figcaption align="middle">L_NEAREST, P_NEAREST</figcaption>
+      </td>
+      <td>
+        <img src="images/hw1/p6-4.png" align="middle" width="300px"/>
+        <figcaption align="middle">L_NEAREST, P_LINEAR</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/hw1/p6-5.png" align="middle" width="300px"/>
+        <figcaption align="middle">L_LINEAR, P_NEAREST</figcaption>
+      </td>
+      <td>
+        <img src="images/hw1/p6-6.png" align="middle" width="300px"/>
+        <figcaption align="middle">L_LINEAR, P_LINEAR</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/hw1/p6-mipmaps.png" align="middle" width="300px"/>
+        <figcaption align="middle"><p>Mipmap levels <font size="1">(red is level 0, green level 1, and blue level 2).</font></p></figcaption>
+      </td>
+      <td>
+        <img src="images/hw1/p6-trilinear.png" align="middle" width="300px"/>
+        <figcaption align="middle">Mipmap levels from trilinear filtering</figcaption>
+      </td>
+<!--       <td>
+        <p>Mipmap levels from trilinear filtering (L_LINEAR).</p><p>Red is level 0, green level 1, and blue level 2.</p>
+      </td> -->
+    </tr>
+  </table>
+</div>
+
+<h2 align="middle">Section III: Art Competition</h2>
+<p>If you are not participating in the optional art competition, don't worry about this section!</p>
+
+<h3 align="middle">Part 7: Draw something interesting!</h3>
+
+</body>
+</html>

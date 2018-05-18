@@ -1,0 +1,248 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<style>
+  body {
+    padding: 100px;
+    width: 1000px;
+    margin: auto;
+    text-align: left;
+    font-weight: 300;
+    font-family: 'Open Sans', sans-serif;
+    color: #121212;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Source Sans Pro', sans-serif;
+  }
+</style>
+<title>CS 184 Clothsim</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+</head>
+
+
+<body>
+
+<h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2018</h1>
+<h1 align="middle">Project 5: Cloth Simulator</h1>
+<h2 align="middle">Joseph Moon, CS184</h2>
+
+<br><br>
+
+<div>
+
+<h2 align="middle">Overview</h2>
+<p>In this assignment, we implemented a cloth simulator based on masses and springs. We defined physical constraints, applied Verlet integration to calculate forces, and constrained position updates to avoid unrealistic deformation. We also implemented collision with objects and self-collision using spatial hashing.</p>
+<h2 align="middle">Part 1: Masses and springs</h2>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p1.png" align="middle" width="300px"/>
+        <figcaption align="middle">scene/pinned2.json</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p1-no-shear.png" align="middle" width="300px"/>
+        <figcaption align="middle">No shearing constraint</figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p1-only-shear.png" align="middle" width="300px"/>
+        <figcaption align="middle">Only shearing constraint</figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p1-all.png" align="middle" width="300px"/>
+        <figcaption align="middle">All constraints</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h2 align="middle">Part 2: Simulation via numerical integration</h2>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p2-default.png" align="middle" width="600px"/>
+        <figcaption align="middle"><font size="2">Resting with default parameters (ks = 5000 N/m, density = 15 g/cm2, damping = 0.2%)</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>Low spring constant leads to more ripples and "droopiness," since the masses are less tightly held by the springs. High spring constant results in a more taut wireframe, similar to how new clothes are less stretchy and appear flatter.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p2-low-ks.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Low spring constant (ks = 500 N/m)</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p2-high-ks.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">High spring constant (ks = 50000 N/m)</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>Density has the opposite relationship, where lower density gives a more taut appearance and higher density is more droopy. This is because reduced mass has less gravitational force, which lessens the degree to which masses resist spring force and droop downwards.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p2-low-density.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Low density (3 g/cm2)</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p2-high-density.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">High density (30 g/cm2)</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p2-very-high-density.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Very high density (120 g/cm2)</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>Low damping makes the cloth take longer to settle, while no damping means it stays in motion forever. High damping gives it a stiff motion, as if the cloth were a solid board. However, even with high damping the cloth still settles into nearly the same shape as default. This is because with damping the forces remain the same, but the time they take to apply changes.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p2-damping-none.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">No damping</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p2-damping-high.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">High damping (~0.63%)</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/><br/>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p2-pinned4.png" align="middle" width="600px"/>
+        <figcaption align="middle"><font size="2">scene/pinned4.json, default parameters</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h2 align="middle">Part 3: Handling collisions with other objects</h2>
+<p>Similar to before, low spring constant gives a droopier appearance and high spring constant gives a more taut one. While colliding with another object, the behavior of the springs is similar - reducing the spring force enable masses to drop down further from gravity and vice versa.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p3-ks-500.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Low spring constant (ks = 500 N/m)</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p3-ks-5000.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Default spring constant (ks = 5000 N/m)</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p3-ks-50000.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">High spring constant (ks = 50000 N/m)</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p3-plane.png" align="middle" width="500px"/>
+        <figcaption align="middle"><font size="2">scene/plane.json</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h2 align="middle">Part 4: Handling self-collisions</h2>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p4-early.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Self collision with default parameters</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p4-mid.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Falling down</font></figcaption>
+      </td>
+  </tr>
+  <tr>
+      <td>
+        <img src="images/hw5/p4-late.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Nearly at floor</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p4-rest.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">At rest</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/><br/>
+<p>Low spring constant results in a more jumbled self-collision with many more folds. This is because constraints, particularly bending, are less strong and allow the cloth to make sharper and tighter folds.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p4-ks-500.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Low spring constant (ks = 500 N/m)</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p4-ks-500-rest.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">At rest</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/><br/>
+<p>Likewise, higher spring constant keeps masses more tightly bound to their neighbors, so folds tend to be more gradual and less jumbled.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p4-ks-50000.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">High spring constant (ks = 50000 N/m)</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p4-ks-50000-rest.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">At rest</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/><br/>
+<p>Density works on the same principles, with low density resembling high spring constant and high density resembling low spring constant.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw5/p4-density-3.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">Low density (3 g/cm2)</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw5/p4-density-45.png" align="middle" width="300px"/>
+        <figcaption align="middle"><font size="2">High density (45 g/cm2)</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+</body>
+</html>

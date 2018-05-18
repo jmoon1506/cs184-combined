@@ -1,0 +1,276 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<style>
+  body {
+    padding: 100px;
+    width: 1000px;
+    margin: auto;
+    text-align: left;
+    font-weight: 300;
+    font-family: 'Open Sans', sans-serif;
+    color: #121212;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Source Sans Pro', sans-serif;
+  }
+</style>
+<title>CS 184 Mesh Editor</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+</head>
+
+
+<body>
+
+<h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2018</h1>
+<h1 align="middle">Project 2: Mesh Editor</h1>
+<h2 align="middle">Joseph Moon, CS284A</h2>
+
+<br><br>
+
+<div>
+
+<h2 align="middle">Overview</h2>
+<p>In this assignment, we built Bezier curves and surfaces and implmented various 3D mesh operations. The second involved becoming familiar with the half-edge mesh data structure and using it to implement edge flips, edge splits, and Loop subdivision. We found the most interesting part of this project to be the application of low-level mesh operations to complex behaviors such as mesh subdivision.</p>
+
+<h2 align="middle">Section I: Bezier Curves and Surfaces</h2>
+
+<h3 align="middle">Part 1: Bezier curves with 1D de Casteljau subdivision</h3>
+
+<p>De Casteljau's algorithm recursively splits each segment in a collection of control points, where the final split determines the location of a point on a Bezier curve. It calculates points for split value <i>t</i>, from 0 to 1. This results in a curve going from the first to last control point, influenced by the control points between.</p>
+
+<p>We implemented this algorithm by pushing "intermediate" control points onto an array, where each level of the array has one less control point than the previous one. This is seen in the visual representation, where each step evaluation represents the addition of a level of intermediate control points. When a level has only two control points, we apply the split <i>t</i> to get the evaluated point.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <figcaption align="middle">Custom points (docs/curve3.bzc)</figcaption>
+        <img src="images/hw2/1-1.png" align="middle" height="240px"/>
+      </td>
+      <td>
+        <img src="images/hw2/1-2.png" align="middle" height="240px"/>
+      </td>
+      <td>
+        <img src="images/hw2/1-3.png" align="middle" height="240px"/>
+      </td>
+      <td rowspan="2">
+        <img src="images/hw2/1-7.png" align="middle" height="480px"/>
+        <figcaption align="middle">Completed curve</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/hw2/1-4.png" align="middle" height="240px"/>
+      </td>
+      <td>
+        <img src="images/hw2/1-5.png" align="middle" height="240px"/>
+      </td>
+      <td>
+        <img src="images/hw2/1-6.png" align="middle" height="240px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw2/1-10.png" align="middle" height="240px"/>
+        <figcaption align="middle">Modified control points</figcaption>
+      </td>
+      <td>
+        <img src="images/hw2/1-11.png" align="middle" height="240px"/>
+        <figcaption align="middle">Modified t value</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+
+<h3 align="middle">Part 2: Bezier surfaces with separable 1D de Casteljau subdivision</h3>
+
+<p>We can extend Bezier curves to 3D surfaces by creating parallel Bezier curves along one axis. We then use points drawn from the parallel curves as control points in another Bezier curve on the orthogonal axis. This creates a 2D surface of points existing in 3D space.</p>
+<p>We implemented Bezier patches at each (u,v) point by evaluating the 1D Bezier curve on <i>u</i>. We then used the result as control points to evaluate at <i>v</i>, giving us the final 3D point.<p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw2/2-1.png" align="middle" height="240px"/>
+        <figcaption align="middle">Bezier surface teapot</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+
+<h2 align="middle">Section II: Sampling</h2>
+
+<h3 align="middle">Part 3: Average normals for half-edge meshes</h3>
+
+<p>Given a vertex, we use half-edges to collect the normals of its neighboring faces. We then return the normalized sum of the face normals.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw2/3-1.png" align="middle" height="240px"/>
+        <figcaption align="middle">Face normals</figcaption>
+      </td>
+      <td>
+        <img src="images/hw2/3-2.png" align="middle" height="240px"/>
+        <figcaption align="middle">Smoothed vertex normals</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+
+<h3 align="middle">Part 4: Half-edge flip</h3>
+
+<p>Given an EdgeIter, we use half-edges to collect all the pointers seen on the left side of the figure below. We then reassign the pointers with the relations seen on the right side.</p> 
+<p>We initially faced a lot of crashes from incorrect pointer assignments. However, drawing a diagram helped fix those problems.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw2/4-3.png" align="middle" height="240px"/>
+        <figcaption align="middle">Flip operation diagram</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw2/4-1.png" align="middle" height="240px"/>
+        <figcaption align="middle">Before edge flips</figcaption>
+      </td>
+      <td>
+        <img src="images/hw2/4-2.png" align="middle" height="240px"/>
+        <figcaption align="middle">After edge flips</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br>
+
+
+<h3 align="middle">Part 5: Half-edge split</h3>
+
+<p>Given an EdgeIter, we use half-edges to collect all the pointers seen on the left side of the figure below. We also create 6 new half-edges, 3 new edges, 2 new faces, and a new vertex. Then we reassign the pointers with the relations seen on the right side.</p> 
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw2/5-4.png" align="middle" height="240px"/>
+        <figcaption align="middle">Split operation diagram</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw2/5-1.png" align="middle" height="200px"/>
+        <figcaption align="middle">Before edge splits</figcaption>
+      </td>
+      <td>
+        <img src="images/hw2/5-2.png" align="middle" height="200px"/>
+        <figcaption align="middle">After edge splits</figcaption>
+      </td>
+      <td>
+        <img src="images/hw2/5-3.png" align="middle" height="200px"/>
+        <figcaption align="middle">After a combination of edge flips and splits</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+
+<h3 align="middle">Part 6: Loop subdivision for mesh upsampling</h3>
+
+<p>To implement Loop subdivision, we calculated new vertex and edge position according to the numbers mentioned in the homework. We split every edge and flipped any edges connecting old and new vertices. We then applied the new vertex and edge positions. Since splitting edges creating new vertices, it is important to flag the old vertices so that we only update their positions.</p>
+
+<p>We observed that the algorithm can result in asymmetrical subdivisions if the original mesh has asymmetrical triangles.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/hw2/6-2.png" align="middle" height="200px"/>
+        <figcaption align="middle"><font size="2">After subdivision, some corners are asymmetrical</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw2/6-3.png" align="middle" height="200px"/>
+        <figcaption align="middle"><font size="2">This is because the original mesh is asymmetrical</font></figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/hw2/6-4.png" align="middle" height="200px"/>
+        <figcaption align="middle"><font size="2">We can flip and split the original mesh into a symmetical shape</font></figcaption>
+      </td>
+      <td>
+        <img src="images/hw2/6-5.png" align="middle" height="200px"/>
+        <figcaption align="middle"><font size="2">Giving a more symmetrical subdivided shape</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <p align="middle">Loop subdivision on <i>dae/cube.dae</i>, no modifications</p>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/hw2/6-6.png" align="middle" height="120px"/>
+      </td>
+      <td>
+        <img src="images/hw2/6-7.png" align="middle" height="120px"/>
+      </td>
+      <td>
+        <img src="images/hw2/6-8.png" align="middle" height="120px"/>
+      </td>
+      <td>
+        <img src="images/hw2/6-9.png" align="middle" height="120px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <p align="middle">Loop subdivision on <i>dae/cube.dae</i>, with original mesh split on every side</p>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/hw2/6-10.png" align="middle" height="120px"/>
+      </td>
+      <td>
+        <img src="images/hw2/6-11.png" align="middle" height="120px"/>
+      </td>
+      <td>
+        <img src="images/hw2/6-12.png" align="middle" height="120px"/>
+      </td>
+      <td>
+        <img src="images/hw2/6-13.png" align="middle" height="120px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>By uniformly splitting the mesh before subdividing, we can get a symmetrical subdivided mesh. This is because asymmetric triangle meshes will create new vertices in asymmetric positions, where they may have been planar and therefore smooth in the original mesh. For example, the faces of original cube mesh are composed of two triangles, but since they are planar it appears like a symmetrical quad. However, the mesh will become lopsided in the direction of those triangles when subdivided.</p>
+
+</body>
+</html>
