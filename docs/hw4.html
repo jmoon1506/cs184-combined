@@ -1,0 +1,197 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<style>
+  body {
+    padding: 100px;
+    width: 1000px;
+    margin: auto;
+    text-align: left;
+    font-weight: 300;
+    font-family: 'Open Sans', sans-serif;
+    color: #121212;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Source Sans Pro', sans-serif;
+  }
+</style>
+<title>CS 184 Mesh Editor</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+</head>
+
+
+<body>
+
+<h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2018</h1>
+<h1 align="middle">Project 4: Shaders</h1>
+<h2 align="middle">Joseph Moon, CS284A</h2>
+
+<p><a href="http://cs184sp18.github.io/proj3_2-pathtracer-jmoon1506/gl">Link to WebGL implementation</a></p>
+
+<p>A shader program describes operations on a single element, such as a vertex or fragment, at some point on the rasterization pipeline. By running in parallel on the GPU, shader programs can performs enormous numbers of simultaneous calculations and enable the creation of complex scenes. Rasterization usually begin with the vertex shader, which operates on each vertex in the scene's geometry. The vertex shader may modify vertex position (e.g. displacement) and output values &mdash; such as normal, vertex position, and texture UV position &mdash; to get passed along the pipeline. Later in the pipeline, after it evaluates how vertices translate to screen fragments, comes the fragment shader. This determines the contribution of a particular geometry to a pixel sample's color. It is in the fragment shader that we evaluate lighting and materials, using normal and position values passed from the vertex shader. For example, we may pass the normal, camera vector, and light vector into the Blinn-Phong equation to get a color value for the fragment. Similarly, we can sample a material's texture at the UV value passed from the vertex shader to get its color. The results from multiple fragments can be combined into the final sample color, and samples can be combined into the final pixel color.</p>
+
+<p> Blinn-Phong shading is a shading model that approximates real light by dividing it into three parts: ambient light, diffuse shading, and specular reflection.
+<div align="middle">
+  <table style="width=100%" cellpadding="16">
+    <tr>
+      <td>
+        <p>Ambient light accounts for all the light that naturally permeates a scene. We simply add a constant color, in this case the color white, to all surfaces instead of using an expensive ray tracing algorithm to calculate global illumination.</p>
+      </td>
+      <td>
+        <img src="images/p5-phong-ambient.png" align="middle" width="300px"/>
+        <figcaption align="middle">Ambient component</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>Diffuse shading covers matte surfaces that reflect light equally in all directions. Therefore we simply multiply the intensity of light (divided by distance from its source) by the dot product of the surface normal and light vector. This returns a value relative to the surface's angle and distance from the light. If negative, we know the surface is angled away from the light and therefore not diffuse shaded.</p>
+      </td>
+      <td>
+        <img src="images/p5-phong-diffuse.png" align="middle" width="300px"/>
+        <figcaption align="middle">Diffuse component</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>Specular reflection occurs when a surface reflects light more intensely towards the mirror direction (i.e. reflection of the light vector). To find the specular reflection component, we calculate the bisector of the light and view vectors. The dot product of the bisector and normal becomes larger as they get closer together (which is equivalent to the view vector approaching the mirror direction). We take a power p of the dot product, in this example p = 64, to increase the narrowness of the reflection lobe. This gives us the shiny spot seen on specular objects, such as ceramic teapots.</p>
+      </td>
+      <td>
+        <img src="images/p5-phong-specular.png" align="middle" width="300px"/>
+        <figcaption align="middle">Specular component</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>We weight all the components, depending on the surface's material properties. In this case, we have weighted the ambient component at 0.15, the diffuse component at 0.7, and the specular component at 0.7. Added together, they produce the image on the right.</p>
+      </td>
+      <td>
+        <img src="images/p5-phong.png" align="middle" width="300px"/>
+        <figcaption align="middle">Full Blinn-Phong shading</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<div align="middle">
+  <table style="width=100%" cellpadding="16">
+    <tr>
+      <td>
+        <img src="images/custom_texture.jpg" align="middle" width="200px"/>
+        <figcaption align="middle">Custom grass texture</figcaption>
+      </td>
+      <td>
+        <img src="images/p5-tex.png" align="middle" width="400px"/>
+        <figcaption align="middle">Texture mapping using custom grass texture</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<p>Bump mapping calculates a normal for each fragment based on the difference in texture value (i.e. texture displacement) in adjacent points. For this code, we just use the red color value at the uv position in the shader. This results in normals perpendicular to the gradient of texture value. As a result, we see speckled highlights from specular shading. With displacement mapping, we also offset the vertex position based on texture value. Therefore displacement mapping looks similar to bump mapping, but has a spiked appearance where the red color value of the texture is high. Both images use geometry detail of 256.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p5-tex-bump.png" align="middle" width="400px"/>
+        <figcaption align="middle">Bump mapping</figcaption>
+      </td>
+      <td>
+        <img src="images/p5-tex-disp.png" align="middle" width="400px"/>
+        <figcaption align="middle">Displacement mapping</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<p>These effects are influenced by geometry detail. For bump mapping, higher detail increases the granularity of the specular highlight, since more normals reflect light less uniformly. For displacement mapping, more detail results in a spikier surface - quite obviously because more vertices are available to be displaced.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p5-tex-bump-16.png" align="middle" width="400px"/>
+        <figcaption align="middle">Bump map: geometry detail set at 16</figcaption>
+      </td>
+      
+      <td>
+        <img src="images/p5-tex-bump-1024.png" align="middle" width="400px"/>
+        <figcaption align="middle">Bump map: geometry detail set at 1024</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/p5-tex-disp-16.png" align="middle" width="400px"/>
+        <figcaption align="middle">Disp. map: geometry detail set at 16</figcaption>
+      </td>
+      
+      <td>
+        <img src="images/p5-tex-disp-1024.png" align="middle" width="400px"/>
+        <figcaption align="middle">Disp. map: geometry detail set at 1024</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<p><b>Custom toon shader</b></p>
+<p>Had some fun with this one. Implemented an outline by composition, as well as cel shading and integration of previous parts.</p>
+<div align="middle">
+  <table style="width=100%" cellpadding="16">
+    <tr>
+      <td>
+        <p>To implement toon shading, we needed to outline the object and implement cel shading. We initially tried to draw the outline by coloring black any points close to perpendicular with the camera, since these are at the edges of the visible geometry. However, this results in points closer to the camera and regions with smoother geometry having thicker outlines. This gives an unconvincing outline as seen in the image on the right.</p>
+      </td>
+      <td>
+        <img src="images/p5-toon-teapot-attempt.png" align="middle" width="400px"/>
+        <figcaption align="middle">Outline based on dot(normal, view)</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>To make a better outline, we modified the renderer to include an additional scene. We draw a slightly scaled up copy of the geometry in this scene and make it entirely black. We then draw the original scene on top.</p><p>The cel shader was much simpler - we just multiplied the shaded color by a constant value thresholded by dot(normal, light). This results in discrete brightness levels, but with shading still visible.</p>
+      </td>
+      <td>
+        <img src="images/p5-toon-teapot.png" align="middle" width="400px"/>
+        <figcaption align="middle">Composited outline with cel shader</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>We integrated tasks 3 and 4 into our shader, so the final render uses a texture and displacement mapping. We found the idea of a fuzzy, stone teapot somewhat amusing.</p>
+      </td>
+      <td>
+        <img src="images/p5-fuzzy-teapot.png" align="middle" width="400px"/>
+        <figcaption align="middle">Added texture and displacement mapping</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<p><b>Extra credit: reflect and refract shaders</b></p>
+<div align="middle">
+  <table style="width=100%" cellpadding="16">
+    <tr>
+      <td>
+        <p>After implementing the cube map, it was very straightforward to create the reflection shader. We simply used the built-in GLSL reflect function to reflect the camera vector across the normal vector (we implemented this manually in part 2). We also flipped the y-sign to make it right side up. Then we sampled the cube map texture with this vector.</p>
+      </td>
+      <td>
+        <img src="images/p5-reflect.png" align="middle" width="400px"/>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>Refraction was trickier, since we can't track multiple bounces as in the pathtracer. Instead we have to approximate refraction by calculating a reflected and refracted term separately. Then we interpolate between them using a Fresnel term, which indicates how close the camera ray is to total internal reflection. The resulting image lacks some of the realism of the pathtracer, but can run in real-time.</p>
+      </td>
+      <td>
+        <img src="images/p5-refract.png" align="middle" width="400px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+
+</body>
+</html>

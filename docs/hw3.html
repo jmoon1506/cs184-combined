@@ -1,0 +1,621 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<style>
+  body {
+    padding: 100px;
+    width: 1000px;
+    margin: auto;
+    text-align: left;
+    font-weight: 300;
+    font-family: 'Open Sans', sans-serif;
+    color: #121212;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Source Sans Pro', sans-serif;
+  }
+</style>
+<title>CS 184 Mesh Editor</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+</head>
+
+
+<body>
+
+<h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2018</h1>
+<h1 align="middle">Project 3: Ray Tracing</h1>
+<h2 align="middle">Joseph Moon, CS284A</h2>
+
+<br>
+<hr>
+<br>
+<div>
+
+<h2 align="middle">Overview</h2>
+<p>In this assignment, we gradually built up features for ray tracing complex geometries. We first wrote code to generate rays from a camera and intersect them against primitives in a scene. Since computational complexity would increase exponentially with more primitives, we implemented a bounding volume hierarchy to only intersect rays against primitives close to their paths. We then implemented direct lighting using Monte Carlo sampling, where each sample tests for lighting in random directions. To reduce noise and unnecessary rays, we used importance sampling to focus random samples on lights within the scene. We extended our code to indirect lighting by calling lighting functions recursively, randomly culling rays to ensure they eventually terminate in an unbiased manner. Finally, we applied adaptive sampling to our pixel renderer so that we stop sampling each pixel if the existing samples show low variance.</p>
+<br>
+<hr>
+<br>
+<h2 align="middle">Part 1: Ray Generation and Scene Intersection</h2>
+
+<p>For each pixel, we generate <i>ns_aa</i> samples from the camera. We sample random points within the pixel, or the center of the pixel if there is only one. Then we convert the sample to camera space. The sample's x and y positions in camera space are defined by the camera's FOV settings, which determines how wide or narrow we want to capture samples from world space. We then define a ray one z-unit away from the sensor plane which passes through the sample. Finally we convert the ray to world space, where we can trace it within the scene. For this part, we test every ray against every primitive for intersections.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <p>For triangle primitives, we use the Moller Trumbore algorithm. This algorithm solves intersection as a linear system of the ray <span style="background-color:#D3D3D3;padding:0px 5px"> O + t*D</span> and barycentric formulation of the triangle <span style="background-color:#D3D3D3;padding:0px 5px"> b<sub>0</sub> * P<sub>0</sub> + b<sub>1</sub> * P<sub>1</sub> + b<sub>2</sub> * P<sub>2</sub></span>. To solve the equation <span style="background-color:#D3D3D3;padding:0px 5px"> O + t*D = b<sub>0</sub> * P<sub>0</sub> + b<sub>1</sub> * P<sub>1</sub> + b<sub>2</sub> * P<sub>2</sub> </span>, we arrange it into the form Mx=b, such that <span style="background-color:#D3D3D3;padding:0px 5px"> x = [t, b<sub>1</sub>, b<sub>2</sub>]<sup>T</sup> </span>.</p> 
+
+        <p>Since <span style="background-color:#D3D3D3;padding:0px 5px">b<sub>0</sub>+b<sub>1</sub>+b<sub>2</sub>=1</span>, we can express <span style="background-color:#D3D3D3;padding:0px 5px">b<sub>0</sub>=1-b<sub>1</sub>-b<sub>2</sub></span>. This gives us <span style="background-color:#D3D3D3;padding:0px 5px">M = [-D, P<sub>1</sub> - P<sub>0</sub>, P<sub>2</sub> - P<sub>0</sub>]</span> and <span style="background-color:#D3D3D3;padding:0px 5px">b = O - P<sub>0</sub></span>. Using Cramer's rule, we can solve Mx=b for x using the linear system shown on the right. After finding the intersection time t, we set it as the ray's maximum t, so that the ray does not intersect primitives behind the triangle. We also use the intersection pointer to store the ray's intersection time, its normal, a pointer to the intersecting primitive, and the primitive's bsdf.</p>
+      </td>
+      <td>
+        <img src="images/moller_trumbore.jpg" align="middle" width="300px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <p>For sphere primitives, we solve a similar equation where the distance of a point on the ray to the center of the sphere is equal to the radius of the sphere. This point on the ray can be solved using the quadratic formula, as long as variables a, b, and c (defined in the image on the right) fulfills <span style="background-color:#D3D3D3;padding:0px 5px">b<sup>2</sup> - 4*a*c >= 0</span>. Otherwise we know the ray never intersects the sphere and return false. Because the quadratic equation returns two values of t, we use the smaller value since we want to know where the ray intersects the sphere first. Just like with the triangle primitive, we set t as the the ray's maximum t to prevent further intersections and store properties in the intersection pointer.</p>
+      </td>
+      <td>
+        <img src="images/ray_sphere.jpg" align="middle" width="300px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>For now, we just use the intersection's unit normal to determine the color of each sample, using the formula <code>(n[0],n[1],n[2])*.5 + (.5,.5,.5)</code>. The color of each pixel is the average of its samples' colors.
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p1-3.png" align="middle" width="300px"/>
+        <figcaption align="middle">sky/CBempty.dae, 12 primitives</figcaption>
+      </td>
+      <td>
+        <img src="images/p1-2.png" align="middle" width="300px"/>
+        <figcaption align="middle">sky/CBspheres_lambertian.dae, 14 primitives</figcaption>
+      </td>
+      <td>
+        <img src="images/p1-1.png" align="middle" width="300px"/>
+        <figcaption align="middle">sky/CBgems.dae, 252 primitives</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br>
+<hr>
+<br>
+<h2 align="middle">Part 2: Bounding Volume Hierarchy</h2>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <p>To speed up rendering, we want to test each ray for intersection against as few primitives as possible. We do this by construction a bounding volume hierarchy (BVH). Before tracing any rays, we define a bounding box for each primitive based on its minimum and maximum x, y, and z extents. We use the minimum and maximum extents for all primitives to compute a bounding box for the entire scene. Then we enter a recursive loop, where we create a node containing all primitives within the bounding box, split the bounding box along its largest dimension in the middle, move the split point until there is at least one primitive on each side, and add each side to the left or right node of a binary tree. To give more detail, for each recursive step we choose a split point for the bounding box by making sure neither the left or right side is empty. If either is empty, we moved the split point halfway towards the empty side in a similar manner to binary search. This process continues until the left and right both contain at least one primitive, at which point we recursively create nodes on the left and right sides. The left and right nodes repeat this process and split until a node has <i>max_leaf_size</i> or fewer primitives. Then we set that node to be a leaf node and assign it the list of remaining primitives.</p>
+      </td>
+      <td>
+        <img src="images/p2-1.png" align="middle" width="300px"/>
+        <figcaption align="middle">Example of the 1st, 2nd, and 3rd attempts to find a bounding box split point. The circles are primitives.</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>To intersect against the BVH, we test each ray against the largest bounding box. We use the simple equation <span style="background-color:#D3D3D3;padding:0px 5px">t = (P<sub>intersect</sub> - O) / D</span>, where P<sub>intersect</sub> are the x, y, and z slabs of the bounding box, the check when the ray enters and exits the bounding box along each dimension (a slab is defined by two points along the dimension, where a point lies inside only if between those points). For each slab, we find the time t that the ray enters and exits the slab. If the largest entrance time is less than the smallest exit time, that means the ray intersects the bounding box (geometrically, that means the ray enters each slab before exiting any of them). If the ray intersects the bounding box, we check if it's a leaf node. If so, we test the ray for intersection against every primitive in that node and return the first intersection (also setting the ray's max_t to the intersection time). If the node is not a leaf node, we pass the ray to its left and right children recursively.</p>
+
+<p>Using a BVH, we can render much more complex scenes in reasonable amounts of time.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p2-4.png" align="middle" width="300px"/>
+        <figcaption align="middle">sky/CBbunny.dae, 28588 primitives</figcaption>
+      </td>
+      <td>
+        <img src="images/p2-3.png" align="middle" width="300px"/>
+        <figcaption align="middle">meshedit/peter.dae, 40018 primitives</figcaption>
+      </td>
+      <td>
+        <img src="images/p2-2.png" align="middle" width="300px"/>
+        <figcaption align="middle">sky/CBlucy.dae, 133796 primitives</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<hr>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p2-5.png" align="middle" width="600px"/>
+      </td>
+      <td>
+        <p></p>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>This graph shows primitive count versus render time. Using the BVH quite obviously runs faster than non-BVH, to the point where we found it impractical to measure any of the larger scenes with non-BVH code. Since both axes are in log scale, we can see that without BVH, render time increases exponentially with the number of primitives. This makes sense, because each new primitive must be compared against every other primitive. However, the performance of BVH is more curious. While render time generally increases with primitive count, we see data points where high particle counts rendered faster than expected. We speculate this is because the geometry of these scenes are particularly well-suited for BVH optimization. In the case of CBlucy, a large number of triangles are concentrated in a relatively small part of the scene, letting most samples ignore them completely. In general, more heterogenous scenes with large numbers of primitives grouped in small volumes seem to perform better than raw primitive count would suggest.</p>
+<br>
+<hr>
+<br>
+
+<h2 align="middle">Part 3: Direct Illumination</h2>
+
+
+<div align="middle">
+  <table style="width=100%">
+    <tr><p>Uniform Hemisphere Sampling</p></tr>
+    <tr>
+      <td>
+        <img src="images/p3-1.png" align="middle" width="300px"/>
+      </td>
+      <td>
+        <img src="images/p3-2.png" align="middle" width="300px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>To implement uniform hemisphere sampling, we converted each camera ray to object space (where the center of the object is the origin). We draw a random unit vector from a hemisphere facing the normal of the intersection point. We convert this to world space, add a small offset factor to avoid re-collision, and set it to the origin of a new ray. The direction of the ray is the random unit vector in world space. After testing this new ray for intersection with the scene, we return a color summing the new intersection's emission, the original intersection's bsdf, and a cosine term for the angle of irradiance. We do this <i>ns_area_light</i> times, averaging the colors returned by the randomly cast rays. In other words, we return a color at each sample equal to the sum of random samples cast from that point, such that each random ray returns a color if it hits an emitting object such as a light. This results in relatively noisy images, since most random rays cast from each sample intersection do not hit any lights.</p>
+
+<br/>
+<hr>
+<br/>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr><p>Importance Sampling</p></tr>
+    <tr>
+      <td>
+        <img src="images/p3-3.png" align="middle" width="300px"/>
+      </td>
+      <td>
+        <img src="images/p3-4.png" align="middle" width="300px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>For importance sampling, we follow a similar procedure. But to reduce noise and speed up rendering, we cast the random rays only in the direction of lights in the scene. We do this by sampling every light in the scene <i>ns_area_light</i> times (for each sample in a pixel). If the light is a delta light - a light with uniform emission - we only need to sample the light once. This results in much less noisy images, since each pixel only samples the lights rather than a random collection of points which may not contain any lights.</p>
+<br/>
+<hr>
+<br/>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p3-1lightray.png" align="middle" width="300px"/>
+        <figcaption align="middle">1 ray per light</figcaption>
+      </td>
+      <td>
+        <img src="images/p3-4lightray.png" align="middle" width="300px"/>
+        <figcaption align="middle">4 rays per light</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/p3-16lightray.png" align="middle" width="300px"/>
+        <figcaption align="middle">16 rays per light</figcaption>
+      </td>
+      <td>
+        <img src="images/p3-64lightray.png" align="middle" width="300px"/>
+        <figcaption align="middle">64 rays per light</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>As we cast more rays toward the light, noise in soft shadows decreases dramatically. This is because more rays have a chance to intersect the light, up to a proportional number corresponding to the shadow's darkness. This gives us soft shadows with gradient edges. But if we only have one ray towards the light, there is a chance it could be directed towards a section of the light shadowed in the current pixel - thereby misrepresenting the actual color value of the pixel.</p>
+<br/>
+<hr>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p3-2.png" align="middle" width="300px"/>
+        <figcaption align="middle">Uniform Hemisphere Sampling</figcaption>
+      </td>
+      <td>
+        <img src="images/p3-4.png" align="middle" width="300px"/>
+        <figcaption align="middle">Importance Sampling</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>Quite obviously, importance sampling has less noise than uniform hemisphere sampling. However, one should also observe that uniform hemisphere samping has light bleeding, a feature not seen in importance sampling. This is because ray emanating from near the light, positioned away from the ceiling by a tiny offset, occasionally hit the light itself, resulting in a "bleeding" of light outward. Importance sampling avoids this by sampling the light at a random point within it and intersecting from that point into the scene.</p>
+<br>
+<hr>
+<br>
+<h2 align="middle">Part 4: Global Illumination</h2>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr><p>Global Illumination</p></tr>
+    <tr>
+      <td>
+        <img src="images/p4-1.png" align="middle" width="300px"/>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>For indirect lighting, we call one of the previous direct lighting methods recursively and sum the resulting values based on their probability of occuring. To avoid being stuck in a loop, we use a "Russian roulette" random cutoff on each recursion. In this code, that means every ray has a 30% random chance of terminating during each bounce. We convert each incoming radiance to an outgoing radiance by multiplying by a sample from the BSDF and cosine factor, dividing by roulette probability and BSDF probability, and using the outgoing radiance to calculate the next bounce's incoming radiance. We can also terminate a ray if it reaches more than <i>max_ray_depth</i> number of bounces. Finally, we add light emission to the global illumination, giving us a combination of bounced light and light directly from emission.</p>
+<br>
+<hr>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p4-emission.png" align="middle" width="200px"/>
+        <figcaption align="middle"><font size="2">Only emission lighting</font></figcaption>
+      </td>
+      <td>
+        <img src="images/p4-direct.png" align="middle" width="200px"/>
+        <figcaption align="middle"><font size="2">Only direct lighting</font></figcaption>
+      </td>
+      <td>
+        <img src="images/p4-indirect.png" align="middle" width="200px"/>
+        <figcaption align="middle"><font size="2">Only indirect lighting</font></figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>The images for emission and direct lighting are unsurprising. Only the light on the ceiling gives off zero bounce emissions, and direct lighting the same as what we saw in part 3. The indirect lighting image shows light bleeding off the walls and under the bunny. This is expected, since indirect rays are presumably bouncing off the colored walls onto the white walls, and from the floor to the underside of the bunny. We also see color from the walls hitting the bunny itself, giving it a slight blue and red hue on either side. Since the light itself does not have lighting properties beyond emission, it does not reflect any rays and therefore appears black.</p>
+<br>
+<hr>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p4-0raydepth.png" align="middle" width="200px"/>
+        <figcaption align="middle">0 max ray depth</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-1raydepth.png" align="middle" width="200px"/>
+        <figcaption align="middle">1 max ray depth</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-2raydepth.png" align="middle" width="200px"/>
+        <figcaption align="middle">2 max ray depth</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-3raydepth.png" align="middle" width="200px"/>
+        <figcaption align="middle">3 max ray depth</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-100raydepth.png" align="middle" width="200px"/>
+        <figcaption align="middle">100 max ray depth</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<p>As max ray depth increases, we see more light bounce onto other surface. As we observed before, areas close to the red and blue walls also become red and blue. This effect becomes stronger as max ray depth increases, since more rays are bouncing from the colored walls - some are likely even bouncing onto the colored wall from elsewhere and then hitting another surface. However, we see less difference between ray depth 3 and 100. This is because rays are increasingly certain to terminate due to Russian roulette. There is only a 0.7<sup>5</sup> = 16% chance a ray will last 5 bounces, 2.8% chance for 10 bounces, and essentially nil for 100 bounces.</p>
+<br>
+<hr>
+<br>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p4-1samples.png" align="middle" width="200px"/>
+        <figcaption align="middle">1 sample per pixel</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-2samples.png" align="middle" width="200px"/>
+        <figcaption align="middle">2 samples per pixel</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-4samples.png" align="middle" width="200px"/>
+        <figcaption align="middle">4 samples per pixel</figcaption>
+      </td>
+    </tr>
+  </table>
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p4-8samples.png" align="middle" width="200px"/>
+        <figcaption align="middle">8 samples per pixel</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-16samples.png" align="middle" width="200px"/>
+        <figcaption align="middle">16 samples per pixel</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-64samples.png" align="middle" width="200px"/>
+        <figcaption align="middle">64 samples per pixel</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-1024samples.png" align="middle" width="200px"/>
+        <figcaption align="middle">1024 samples per pixel</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>As we take more samples, the image becomes less and less noisy. This is unsurprising, since a single sample, even with 4 light ray samples, is unlikely to hit the exact bounces giving the true color (if that is even possible). We also observe that color bleeding is less significant in the low sample images, because fewer rays means a lower chance of hitting the bunny or back wall from the colored walls.</p>
+
+<br>
+<hr>
+<br>
+<h2 align="middle">Part 5: Adaptive Sampling</h2>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p5-1.png" align="middle" width="400px"/>
+        <figcaption align="middle"><font size="2">Adaptive sampling with 2048 samples per pixel, 1 sample per light</font></figcaption>
+      </td>
+      <td>
+        <img src="images/p5-1_rate.png" align="middle" width="400px"/>
+        <figcaption align="middle">Sample rate image</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/p5-3.png" align="middle" width="400px"/>
+        <figcaption align="middle"><font size="2">Same settings with sky/dragon.dae</font></figcaption>
+      </td>
+      <td>
+        <img src="images/p5-3_rate.png" align="middle" width="400px"/>
+        <figcaption align="middle">Sample rate image</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>In the previous part, we saw that increasing the number of samples per pixel is key to reducing noise. However, taking large numbers of samples can be computational expensive, so we want to use adaptive sampling to reduce the number of redundant samples. We do this by keeping track of the mean and standard deviation of samples so far, updating those values every <i>samplesPerBatch</i> number of samples. If new samples fall within the 95% confidence level of the standard deviation, then we stop getting new samples and return the current averaged pixel color. This means uncomplicated parts of the image with consistent lighting will also get fewer samples, saving us lots of computation. </p>
+<p>The sample rate images on the right shows high sampling rates with red, medium with green, and low with blue. Notice that the top of the bunny's sample rate image is colored red, because pixel colors there can be determined by a small number of samples due to strong direct lighting. Likewise, the dragon's sample rate image shows its underside and crevices as green, with medium sampling rate because rays can bounce around in unusual ways to reach those places. The top and surroundings are blue and have low sampling rate due to direct lighting or simple geometry.</p>
+
+<br/>
+<h2 align="middle">Part 6: Mirror and Glass Materials</h2>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <p>No bounces. Because mirror and glass BSDF return black, rays colliding with spheres are black. Only shadows, diffuse surfaces, and light emission visible.</p>
+      </td>
+      <td>
+        <img src="images/p1-1.png" align="middle" width="200px"/>
+        <figcaption align="middle">max_ray_depth = 0</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>Max one bounce. Mirror sphere captures diffuse room features and the light, since they only need one bounce. Glass sphere is still mostly dark, since only some rays bounce from lit surfaces and pass through without total internal reflection.</p>
+      </td>
+      <td>
+        <img src="images/p1-2.png" align="middle" width="200px"/>
+        <figcaption align="middle">max_ray_depth = 1</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>Max two bounces. Ceiling visible in mirror sphere, since it takes two bounces for it to hit a light and a ceiling point. Glass sphere is much clearer as rays bounce off the back wall and through it.</p>
+      </td>
+      <td>
+        <img src="images/p1-3.png" align="middle" width="200px"/>
+        <figcaption align="middle">max_ray_depth = 2</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>We see concentration of light on the floor near the glass sphere, as rays bouncing off the emitted light bounce inside the sphere and concentrate below it.</p>
+      </td>
+      <td>
+        <img src="images/p1-4.png" align="middle" width="200px"/>
+        <figcaption align="middle">max_ray_depth = 3</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>Light from the above concentration bounce onto the blue wall.</p>
+      </td>
+      <td>
+        <img src="images/p1-5.png" align="middle" width="200px"/>
+        <figcaption align="middle">max_ray_depth = 4</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p>Slightly brighter shadows. But at five bounces all features that are possible are shown. Increasing ray depth to 100 does not discernably improve image (in fact, most rays will probably terminate long before then due to Russian roulette).</p>
+      </td>
+      <td>
+        <img src="images/p1-6.png" align="middle" width="200px"/>
+        <figcaption align="middle">max_ray_depth = 5</figcaption>
+      </td>
+      <td>
+        <img src="images/p1-7.png" align="middle" width="200px"/>
+        <figcaption align="middle">max_ray_depth = 100</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h2 align="middle">Part 7: Microfacet Material</h2>
+
+<p>At low values of α, the microfacet surface is smooth enough that most color comes from reflection. As α increases, the surface becomes more diffuse. However, specular effects remain since rays tend to bounce toward the reflected direction. A possible bug is visible in α = 0.005, where the dragon does not seem to reflect emitted light as much as light from the scene.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p2-1.png" align="middle" width="200px"/>
+        <figcaption align="middle">α = 0.005</figcaption>
+      </td>
+      <td>
+        <img src="images/p2-2.png" align="middle" width="200px"/>
+        <figcaption align="middle">α = 0.05</figcaption>
+      </td>
+      <td>
+        <img src="images/p2-3.png" align="middle" width="200px"/>
+        <figcaption align="middle">α = 0.25</figcaption>
+      </td>
+      <td>
+        <img src="images/p2-4.png" align="middle" width="200px"/>
+        <figcaption align="middle">α = 0.5</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<p>Uniform and importance sampling result in similar images, with the main difference being the amount of noise in the uniform sampled one. This is because importance sampling reflects rays based on the normal distribution used to calculate the microfacet color, thereby reducing the number of rays need to get an accurate result. Uniform sampling samples from the entire normal hemisphere, giving many rays with low probability and therefore little impact on the result. This is especially apparent in the many black specks in uniform sampling, where we return black because the calculated ray is not valid (usually because it's in the opposite direction of the surface bisector direction).</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p2-5-uniform.png" align="middle" width="300px"/>
+        <figcaption align="middle">Uniform-sampled</figcaption>
+      </td>
+      <td>
+        <img src="images/p2-5-importance.png" align="middle" width="300px"/>
+        <figcaption align="middle">Importance-sampled</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<p>We also rendered the bunny with the material properties of platinum, with eta = [0.46138 0.4661 0.5887] and k = [5.9022 5.0942 3.9742]. This gives a silver-like appearance, which is realistic.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p2-7.png" align="middle" width="300px"/>
+        <figcaption align="middle">Platinum bunny</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h2 align="middle">Part 8: Environment Light</h2>
+<div align="middle">
+  <table style="width=100%" cellpadding="16">
+    <tr>
+      <td>
+        <img src="images/field.jpg" align="middle" width="600px"/>
+        <figcaption align="middle">field.exr (converted to jpg)</figcaption>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="images/p3-probability_debug_field.png" align="middle" width="600px"/>
+        <figcaption align="middle">Map of pdf for field.exr</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<p>Very little noise in uniform sampling, possibly because diffuse surfaces only need a couple samples to look accurate. Noise should be reduced with importance-sampling. However, there's a bug with our code - notice that importance sampling has white specks on the bunny. We tried to fix it by catching cases where pdf = 0, but this did not fix the error.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p3-2-uniform.png" align="middle" width="300px"/>
+        <figcaption align="middle">Uniform-sampled</figcaption>
+      </td>
+      <td>
+        <img src="images/p3-2-importance.png" align="middle" width="300px"/>
+        <figcaption align="middle">Importance-sampled</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<p>Microfacet surface is noisier, probably because complex lighting means more rays need to hit a point for an accurate color to be displayed. Importance sampling is even noisier due to the bug mentioned above. If this noise bug were solved, we would expect that importance sampling would be less noisy because it targets more probable areas of the texture.</p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p3-3-uniform.png" align="middle" width="300px"/>
+        <figcaption align="middle">Uniform-sampled</figcaption>
+      </td>
+      <td>
+        <img src="images/p3-3-importance.png" align="middle" width="300px"/>
+        <figcaption align="middle">Importance-sampled</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<h2 align="middle">Part 9: Depth of Field</h2>
+<p><b>Different focal distances</b></p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p4-d40.png" align="middle" width="300px"/>
+        <figcaption align="middle">f = 4.0</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-d44.png" align="middle" width="300px"/>
+        <figcaption align="middle">f = 4.4</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p4-d48.png" align="middle" width="300px"/>
+        <figcaption align="middle">f = 4.8</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-d52.png" align="middle" width="300px"/>
+        <figcaption align="middle">f = 5.2</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<p><b>Different aperture sizes</b></p>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p4-a00625.png" align="middle" width="300px"/>
+        <figcaption align="middle">a = 0.0625</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-a025.png" align="middle" width="300px"/>
+        <figcaption align="middle">a = 0.25</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/p4-a05.png" align="middle" width="300px"/>
+        <figcaption align="middle">a = 0.5</figcaption>
+      </td>
+      <td>
+        <img src="images/p4-a1.png" align="middle" width="300px"/>
+        <figcaption align="middle">a = 1.0</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+</body>
+</html>
